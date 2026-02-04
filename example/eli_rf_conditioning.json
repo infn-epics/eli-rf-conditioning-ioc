@@ -1,0 +1,131 @@
+{
+  "prefix_rf_conditioning": "SSRIP:RF:CONDITIONING01",
+  "prefix_LLRF": "sparcdev1",
+  "pv_to_build": [
+    {
+      "pvname": "CONDITIONING_STATUS",
+      "type": "boolOut",
+      "init_value": "0"
+    },
+    {
+      "pvname": "CONDITIONING_SETPOINT",
+      "type": "aOut",
+      "init_value": "0"
+    },
+    {
+      "pvname": "CONDITIONING_TARGET",
+      "type": "aOut",
+      "init_value": "10"
+    },
+    {
+      "pvname": "PREFIX_PUMPS",
+      "type": "WaveformOut",
+      "init_value": ["SPARC:VAC:GUNVPC:","SPARC:VAC:GUNVPC:","SPARC:VAC:GUNVGC:"]
+    },
+    {
+      "pvname": "VACUUM_PUMPS",
+      "type": "WaveformOut",
+      "init_value": ["GUNSIP01","GUNSIP02", "GUNVGA01"]
+    },
+    {
+      "pvname": "SUFFIX_PUMPS",
+      "type": "WaveformOut",
+      "init_value": [":PRES_RB",":PRES_RB",":PRES_RB"]
+    },
+    {
+      "pvname": "VACUUM_TSH",
+      "type": "WaveformOut",
+      "init_value": [1E-8,1E-8,1E-8]
+    },
+    {
+      "pvname": "COUNTER_INTLK",
+      "type": "aIn",
+      "init_value": "0"
+    },
+    {
+      "pvname": "COUNTER_INTLK_TSH",
+      "type": "aOut",
+      "init_value": "5"
+    },
+    {
+      "pvname": "LAST_INTLK_SOURCE",
+      "type": "stringIn",
+      "init_value": "NONE"
+    },
+    {
+      "pvname": "LAST_INTLK_DATETIME",
+      "type": "stringIn",
+      "init_value": "0"
+    },
+    {
+      "pvname": "INTLK_HYSTERESIS",
+      "type": "aOut",
+      "init_value": "0.8"
+    },
+    {
+      "pvname": "POWER_RAISE_STATUS",
+      "type": "boolOut",
+      "init_value": "0"
+    },
+    {
+      "pvname": "POWER_RAISE_WAIT",
+      "type": "aOut",
+      "init_value": "5"
+    },
+    {
+      "pvname": "POWER_RAISE_STEP",
+      "type": "aOut",
+      "init_value": "50"
+    },
+    {
+      "pvname": "RAISE_COUNT",
+      "type": "aOut",
+      "init_value": "0"
+    },
+    {
+      "pvname": "VAC_ID",
+      "type": "aIn",
+      "init_value": "0"
+    },
+    {
+      "pvname": "WF_SOURCE_SUFFIX",
+      "type": "stringOut",
+      "init_value": "ad1:ch5:power_remote.POWER"
+    },
+    {
+      "pvname": "WF_MASK_PERCENT",
+      "type": "aOut",
+      "init_value": "10"
+    },
+    {
+      "pvname": "WF_OFFSET_CURS_US",
+      "type": "aOut",
+      "init_value": "3"
+    },
+    {
+      "pvname": "WF_DURATION_CURS_US",
+      "type": "aOut",
+      "init_value": "5"
+    },
+    {
+      "pvname": "WF_PULSE_PREV",
+      "type": "WaveformOut",
+      "init_value": [0.0]
+    },
+    {
+      "pvname": "WF_PREV_VALID",
+      "type": "boolIn",
+      "init_value": "0"
+    },
+    {
+      "pvname": "WF_INTERLOCK",
+      "type": "boolIn",
+      "init_value": "0"
+    },
+    {
+      "pvname": "WF_PULSE_INTLK_ENABLE",
+      "type": "boolOut",
+      "init_value": "1"
+    }
+  ]
+}
