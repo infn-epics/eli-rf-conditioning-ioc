@@ -25,7 +25,7 @@
     {
       "pvname": "VACUUM_PUMPS",
       "type": "WaveformOut",
-      "init_value": ["GUNSIP01","GUNSIP02", "GUNVGA01"]
+      "init_value": ["GUNSIP01","GUNSIP02","GUNVGA01"]
     },
     {
       "pvname": "SUFFIX_PUMPS",
@@ -90,7 +90,7 @@
     {
       "pvname": "WF_SOURCE_SUFFIX",
       "type": "stringOut",
-      "init_value": "ad1:ch5:power_remote.POWER"
+      "init_value": "sparcdev1:ad1:ch6:power_remote.POWER"
     },
     {
       "pvname": "WF_MASK_PERCENT",
@@ -105,12 +105,12 @@
     {
       "pvname": "WF_DURATION_CURS_US",
       "type": "aOut",
-      "init_value": "5"
+      "init_value": "3"
     },
     {
       "pvname": "WF_PULSE_PREV",
       "type": "WaveformOut",
-      "init_value": [0.0]
+      "init_value": "[0.0]*1017"
     },
     {
       "pvname": "WF_PREV_VALID",
@@ -126,6 +126,16 @@
       "pvname": "WF_PULSE_INTLK_ENABLE",
       "type": "boolOut",
       "init_value": "1"
+    },
+    {
+      "pvname": "WF_MASK_LOW",
+      "type": "WaveformOut",
+      "init_value": "[0.0]*1017"
+    },
+    {
+      "pvname": "WF_MASK_HIGH",
+      "type": "WaveformOut",
+      "init_value": "[0.0]*1017"
     }
   ]
 }
