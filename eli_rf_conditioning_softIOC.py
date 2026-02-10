@@ -1,4 +1,3 @@
-# Import the basic framework components.
 from softioc import softioc, builder
 import json
 import argparse
@@ -11,11 +10,10 @@ import os
 # Read config file
 # -----------------------------
 parser = argparse.ArgumentParser()
-parser.add_argument("-c", "--conf", required=True, default="config.json", help="the configuration name")
-parser.add_argument("-p", "--pvout", required=False, default="pvlist.txt", help="Output PVlist")
+parser.add_argument("-c", "--conf", required=True, default="config.json")
+parser.add_argument("-p", "--pvout", required=False, default="pvlist.txt")
 args = parser.parse_args()
 
-print(f"* opening {args.conf}")
 with open(args.conf, 'r') as f:
     config = json.load(f)
 
@@ -24,10 +22,6 @@ with open(args.conf, 'r') as f:
 # -----------------------------
 prefix_rf_conditioning = config.get('prefix_rf_conditioning')
 prefix_LLRF = config.get('prefix_LLRF')
-
-print("\nList of epics prefixes:")
-print(prefix_rf_conditioning)
-print(prefix_LLRF)
 
 # -----------------------------
 # Create IOC PVs
@@ -61,19 +55,22 @@ def main(prefix_rf_conditioning: str, prefix_LLRF: str):
 
     loop_period = 0.1
     vacuum_over_tsh = False
+    last_wf_sel = None
 
     while True:
 
+        # -----------------------------
         # Reset raise counter if RF is off
-        if caget(prefix_LLRF + ":app:rf_ctrl") == False and conditioning_status.get():
+        # -----------------------------
+        if caget(prefix_LLRF + ":app:rf_ctrl") == 0 and conditioning_status.get():
             raise_count.set(0)
 
         if power_raise_status.get() == 0 and raise_count.get() != 0:
             raise_count.set(0)
 
-        # =====================================
+        # -----------------------------
         # Conditioning logic (vacuum + power raise)
-        # =====================================
+        # -----------------------------
         if conditioning_status.get():
 
             for i in range(len(vacuum_pumps.get())):
@@ -114,38 +111,54 @@ def main(prefix_rf_conditioning: str, prefix_LLRF: str):
 
                 raise_count.set(raise_count.get() + 1)
 
-        # =====================================
+        # -----------------------------
         # Pulse-to-pulse waveform interlock
-        # =====================================
+        # -----------------------------
         if conditioning_status.get() and wf_pulse_intlk_enable.get():
 
-            wf_curr = list(caget(wf_source_suffix.get()))
+            wf_sources = wf_source_suffix.get()
+            wf_sel = int(wf_source_sel.get())
+
+            if wf_sel < 0 or wf_sel >= len(wf_sources):
+                cothread.Sleep(loop_period)
+                continue
+
+            # --- detect waveform source change ---
+            if last_wf_sel is None:
+                last_wf_sel = wf_sel
+
+            if wf_sel != last_wf_sel:
+                wf_prev_valid.set(0)
+                wf_interlock.set(0)
+                last_wf_sel = wf_sel
+                cothread.Sleep(loop_period)
+                continue
+
+            wf_pv_name = wf_sources[wf_sel]
+            wf_curr = list(caget(wf_pv_name))
             time_vec = list(caget(prefix_LLRF + ":app:time_vector"))
-            tol = wf_mask_percent.get() / 100.0
 
             if len(wf_curr) != len(time_vec):
                 cothread.Sleep(loop_period)
                 continue
 
-            # First pulse
+            tol = wf_mask_percent.get() / 100.0
+
+            # --- first valid pulse ---
             if wf_prev_valid.get() == 0:
                 wf_pulse_prev.set(list(wf_curr))
                 wf_prev_valid.set(1)
-
                 wf_mask_low.set([v * (1 - tol) for v in wf_curr])
                 wf_mask_high.set([v * (1 + tol) for v in wf_curr])
-
                 wf_interlock.set(0)
                 cothread.Sleep(loop_period)
                 continue
 
             wf_prev = wf_pulse_prev.get()
 
-            # --- cursors in microseconds ---
             t0 = wf_offset_curs_us.get()
             t1 = t0 + wf_duration_curs_us.get()
 
-            # find index window
             start_idx = 0
             end_idx = len(time_vec) - 1
 
@@ -168,24 +181,16 @@ def main(prefix_rf_conditioning: str, prefix_LLRF: str):
                     fault = True
                     break
 
-            # update previous pulse ALWAYS
             wf_pulse_prev.set(list(wf_curr))
-
-            # update mask display (full waveform)
             wf_mask_low.set([v * (1 - tol) for v in wf_curr])
             wf_mask_high.set([v * (1 + tol) for v in wf_curr])
-
             wf_interlock.set(1 if fault else 0)
 
-            # =====================================
-            # Combine interlocks
-            # =====================================
             if wf_interlock.get() == 1 or vac_id.get() != 0:
                 power_raise_status.set(0)
                 llrf_fbk_level = caget(prefix_LLRF + ":vm:dsp:sp_amp:power")
                 caput(prefix_LLRF + ":app:rf_ctrl", "0")
                 conditioning_setpoint.set(llrf_fbk_level * 1e-6 * intlk_hysteresis.get())
-
                 last_intlk_source.set(
                     vacuum_pumps.get()[vac_id.get() - 1]
                     if vac_id.get() != 0 else "WF_PULSE_TO_PULSE"
@@ -195,9 +200,10 @@ def main(prefix_rf_conditioning: str, prefix_LLRF: str):
 
         cothread.Sleep(loop_period)
 
-# dump PVs
+# -----------------------------
+# Dump PVs
+# -----------------------------
 softioc.dbl()
-
 with open(args.pvout, "w") as f:
     old_stdout = os.dup(1)
     os.dup2(f.fileno(), 1)
@@ -205,8 +211,8 @@ with open(args.pvout, "w") as f:
     os.dup2(old_stdout, 1)
     os.close(old_stdout)
 
-# Launch threads
+# -----------------------------
+# Start thread and IOC
+# -----------------------------
 cothread.Spawn(main, prefix_rf_conditioning, prefix_LLRF)
-
-# Leave IOC running
 softioc.interactive_ioc(globals())
