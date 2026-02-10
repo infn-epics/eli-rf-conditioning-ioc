@@ -141,6 +141,11 @@
       "pvname": "WF_MASK_HIGH",
       "type": "WaveformOut",
       "init_value": "[0.0]*1017"
+    },
+    {
+      "pvname": "WF_PULSE_POSTMORTEM",
+      "type": "WaveformOut",
+      "init_value": "[0.0]*1017"
     }
   ]
 }
