@@ -98,41 +98,43 @@ def main(prefix_rf_conditioning: str, prefix_LLRF: str):
         if conditioning_status.get():
 
             # --- vacuum check ---
+            vac_id_trigger = 0
+            vac_id_reenable = 0
+
             for i in range(len(vacuum_pumps.get())):
                 pv_val = caget(
-                    prefix_pumps.get()[i]
-                    + vacuum_pumps.get()[i]
-                    + suffix_pumps.get()[i]
+                    prefix_pumps.get()[i] +
+                    vacuum_pumps.get()[i] +
+                    suffix_pumps.get()[i]
                 )
+                # soglia spegnimento (trigger interlock)
                 if pv_val > vacuum_tsh.get()[i]:
-                    vac_id.set(i + 1)
-                    break
-                else:
-                    vac_id.set(0)
+                    vac_id_trigger = i + 1
+                # soglia riaccensione (sotto soglia con fattore)
+                elif pv_val > vacuum_tsh.get()[i] * vac_threshold_reenable.get():
+                    vac_id_reenable = i + 1
 
-            # --- vacuum interlock ---
-            if vac_id.get() != 0 and not vacuum_over_tsh:
+            # --- gestione interlock vacuum ---
+            if vac_id_trigger != 0 and not vacuum_over_tsh:
+                # spegnimento potenza
                 power_raise_status.set(0)
                 llrf_fbk_level = caget(prefix_LLRF + ":vm:dsp:sp_amp:power")
                 caput(prefix_LLRF + ":app:rf_ctrl", "0")
-                conditioning_setpoint.set(
-                    llrf_fbk_level * 1e-6 * intlk_hysteresis.get()
-                )
-                last_intlk_source.set(
-                    vacuum_pumps.get()[vac_id.get() - 1]
-                )
+                conditioning_setpoint.set(llrf_fbk_level * 1e-6 * intlk_hysteresis.get())
+                last_intlk_source.set(vacuum_pumps.get()[vac_id_trigger - 1])
                 last_intlk_datetime.set(str(time.time()))
                 vacuum_over_tsh = True
 
-            elif vac_id.get() == 0 and vacuum_over_tsh:
-                power_raise_status.set(1)
-                caput(
-                    prefix_LLRF + ":vm:dsp:sp_amp:power",
-                    str(conditioning_setpoint.get() * 1e6),
-                )
-                caput(prefix_LLRF + ":app:rf_ctrl", "1")
-                caput(prefix_LLRF + ":vm:dsp:pi_amp:loop_closed", "1")
-                vacuum_over_tsh = False
+            elif vac_id_trigger == 0 and vacuum_over_tsh:
+                # riaccensione potenza solo se sotto soglia riaccensione
+                if vac_id_reenable == 0:
+                    power_raise_status.set(1)
+                    caput(prefix_LLRF + ":vm:dsp:sp_amp:power",
+                        str(conditioning_setpoint.get() * 1e6))
+                    caput(prefix_LLRF + ":app:rf_ctrl", "1")
+                    caput(prefix_LLRF + ":vm:dsp:pi_amp:loop_closed", "1")
+                    vacuum_over_tsh = False
+
 
             # --- automatic power raise ---
             if (
@@ -165,6 +167,7 @@ def main(prefix_rf_conditioning: str, prefix_LLRF: str):
 
             wf_sources = wf_source_suffix.get()
             wf_sel = int(wf_source_sel.get())
+            caput(wf_source_refresh_rate.get()[wf_sel], ".1 second")
 
             if wf_sel < 0 or wf_sel >= len(wf_sources):
                 cothread.Sleep(loop_period)
@@ -184,6 +187,7 @@ def main(prefix_rf_conditioning: str, prefix_LLRF: str):
             wf_curr = list(caget(wf_pv_name))
             time_vec = list(caget(prefix_LLRF + ":app:time_vector"))
 
+            
             if len(wf_curr) != len(time_vec):
                 cothread.Sleep(loop_period)
                 continue
