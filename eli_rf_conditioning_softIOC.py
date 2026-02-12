@@ -6,59 +6,48 @@ from cothread.catools import caget, caput
 import time
 import os
 
-# -----------------------------
-# Read config file
-# -----------------------------
+# ============================================================================
+# Configuration Loading
+# ============================================================================
 parser = argparse.ArgumentParser()
-parser.add_argument("-c", "--conf", required=True, default="config.json")
+parser.add_argument("-c", "--conf", required=False, default="config.json")
 parser.add_argument("-p", "--pvout", required=False, default="pvlist.txt")
 args = parser.parse_args()
 
 with open(args.conf, 'r') as f:
     config = json.load(f)
 
-# -----------------------------
-# Load prefixes
-# -----------------------------
 prefix_rf_conditioning = config.get('prefix_rf_conditioning')
 prefix_LLRF = config.get('prefix_LLRF')
 
-# -----------------------------
-# Create IOC PVs
-# -----------------------------
+# ============================================================================
+# PV Creation
+# ============================================================================
 builder.SetDeviceName(prefix_rf_conditioning)
 
 for item in config.get('pv_to_build', []):
     func = getattr(builder, item['type'])
-    if item['type'] in ["boolIn", "boolOut"]:
-        globals()[item['pvname'].lower()] = func(
-            item['pvname'], initial_value=int(item['init_value'])
-        )
-    elif item['type'] in ["WaveformIn", "WaveformOut"]:
-        init_val = item['init_value']
-        if isinstance(init_val, str):
-            init_val = eval(init_val)
-        globals()[item['pvname'].lower()] = func(
-            item['pvname'], initial_value=list(init_val)
-        )
-    elif item['type'] in ["stringIn", "stringOut"]:
-        globals()[item['pvname'].lower()] = func(
-            item['pvname'], initial_value=str(item['init_value'])
-        )
-    else:
-        globals()[item['pvname'].lower()] = func(
-            item['pvname'], initial_value=float(item['init_value'])
-        )
+    pv_type = item['type']
+    pv_name = item['pvname']
+    init_value = item['init_value']
 
-# -----------------------------
-# Start IOC
-# -----------------------------
+    if pv_type in ["boolIn", "boolOut"]:
+        globals()[pv_name.lower()] = func(pv_name, initial_value=int(init_value))
+    elif pv_type in ["WaveformIn", "WaveformOut"]:
+        if isinstance(init_value, str):
+            init_value = eval(init_value)
+        globals()[pv_name.lower()] = func(pv_name, initial_value=list(init_value))
+    elif pv_type in ["stringIn", "stringOut"]:
+        globals()[pv_name.lower()] = func(pv_name, initial_value=str(init_value))
+    else:
+        globals()[pv_name.lower()] = func(pv_name, initial_value=float(init_value))
+
 builder.LoadDatabase()
 softioc.iocInit()
 
-# -----------------------------
-# Main loop
-# -----------------------------
+# ============================================================================
+# Main Control Loop
+# ============================================================================
 def main(prefix_rf_conditioning: str, prefix_LLRF: str):
 
     loop_period = 0.1
@@ -69,9 +58,7 @@ def main(prefix_rf_conditioning: str, prefix_LLRF: str):
 
     while True:
 
-        # -----------------------------------
-        # Waveform interlock hold-off
-        # -----------------------------------
+        # --- Waveform interlock hold-off timer management
         if wf_intlk_time is not None:
             elapsed = time.time() - wf_intlk_time
             if elapsed < wf_intlk_holdoff_s or vac_id.get() != 0:
@@ -80,9 +67,7 @@ def main(prefix_rf_conditioning: str, prefix_LLRF: str):
             else:
                 wf_intlk_time = None
 
-        # -----------------------------------
-        # Reset raise counter if RF is off
-        # -----------------------------------
+        # --- Reset power raise counter when RF is disabled
         if not conditioning_status.get():
             raise_count.set(0)
             cothread.Sleep(loop_period)
@@ -91,89 +76,69 @@ def main(prefix_rf_conditioning: str, prefix_LLRF: str):
         if power_raise_status.get() == 0 and raise_count.get() != 0:
             raise_count.set(0)
 
-        # -----------------------------------
-        # Conditioning logic (vacuum + power raise)
-        # -----------------------------------
+        # ====================================================================
+        # Vacuum Interlock and Power Control
+        # ====================================================================
         if conditioning_status.get():
 
             wf_min_valid_amp = caget(prefix_LLRF + ":vm:dsp:sp_amp:power") * 0.5
 
+            # Check vacuum status across all pump stations
             vac_id_trigger = 0
             vac_id_reenable = 0
 
             for i in range(len(vacuum_pumps.get())):
                 pv_val = caget(
-                    prefix_pumps.get()[i]
-                    + vacuum_pumps.get()[i]
-                    + suffix_pumps.get()[i]
+                    prefix_pumps.get()[i] + vacuum_pumps.get()[i] + suffix_pumps.get()[i]
                 )
-
                 if pv_val > vacuum_tsh.get()[i]:
                     vac_id_trigger = i + 1
                 elif pv_val > vacuum_tsh.get()[i] * vac_threshold_reenable.get():
                     vac_id_reenable = i + 1
 
-            # --- vacuum interlock ---
+            # Trigger vacuum interlock when pressure exceeds threshold
             if vac_id_trigger != 0 and not vacuum_over_tsh:
                 power_raise_status.set(0)
                 llrf_fbk_level = caget(prefix_LLRF + ":vm:dsp:sp_amp:power")
                 caput(prefix_LLRF + ":app:rf_ctrl", "0")
-
-                conditioning_setpoint.set(
-                    llrf_fbk_level * 1e-6 * intlk_hysteresis.get()
-                )
-                last_intlk_source.set(
-                    vacuum_pumps.get()[vac_id_trigger - 1]
-                )
+                conditioning_setpoint.set(llrf_fbk_level * 1e-6 * intlk_hysteresis.get())
+                last_intlk_source.set(vacuum_pumps.get()[vac_id_trigger - 1])
                 last_intlk_datetime.set(str(time.time()))
 
+                # Reset waveform mask to prevent contamination of vacuum interlock record
                 wf_prev_valid.set(0)
                 wf_interlock.set(0)
-
                 vacuum_over_tsh = True
 
+            # Re-enable RF when pressure returns below hysteresis threshold
             elif vac_id_trigger == 0 and vacuum_over_tsh:
                 if vac_id_reenable == 0:
                     power_raise_status.set(1)
-                    caput(
-                        prefix_LLRF + ":vm:dsp:sp_amp:power",
-                        str(conditioning_setpoint.get() * 1e6),
-                    )
+                    caput(prefix_LLRF + ":vm:dsp:sp_amp:power", str(conditioning_setpoint.get() * 1e6))
                     caput(prefix_LLRF + ":app:rf_ctrl", "1")
                     caput(prefix_LLRF + ":vm:dsp:pi_amp:loop_closed", "1")
                     vacuum_over_tsh = False
 
-            # --- automatic power raise ---
-            if (
-                power_raise_status.get()
-                and caget(prefix_LLRF + ":vm:dsp:sp_amp:power")
-                <= conditioning_target.get() * 1e6
-            ):
-                if (
-                    raise_count.get() % (power_raise_wait.get() * 600) == 0
-                    and raise_count.get() != 0
-                ):
-                    llrf_fbk_level = caget(
-                        prefix_LLRF + ":vm:dsp:sp_amp:power"
-                    )
+            # --- Automatic power ramping during conditioning
+            if (power_raise_status.get() and 
+                caget(prefix_LLRF + ":vm:dsp:sp_amp:power") <= conditioning_target.get() * 1e6):
+                
+                if (raise_count.get() % (power_raise_wait.get() * 600) == 0 and raise_count.get() != 0):
+                    llrf_fbk_level = caget(prefix_LLRF + ":vm:dsp:sp_amp:power")
                     caput(
                         prefix_LLRF + ":vm:dsp:sp_amp:power",
-                        str(
-                            llrf_fbk_level
-                            + power_raise_step.get() * 1e3
-                        ),
+                        str(llrf_fbk_level + power_raise_step.get() * 1e3)
                     )
                     raise_count.set(0)
 
                 raise_count.set(raise_count.get() + 1)
 
-        # -----------------------------------
-        # Pulse-to-pulse waveform interlock
-        # -----------------------------------
+        # ====================================================================
+        # Pulse-to-Pulse Waveform Interlock
+        # ====================================================================
         if conditioning_status.get() and wf_pulse_intlk_enable.get():
 
-            # >>> MODIFICA CHIAVE <<<
-            # Se RF è spento per vacuum, ignora completamente la waveform
+            # Skip waveform processing if RF is disabled by vacuum interlock
             if vacuum_over_tsh:
                 cothread.Sleep(loop_period)
                 continue
@@ -189,6 +154,7 @@ def main(prefix_rf_conditioning: str, prefix_LLRF: str):
             if last_wf_sel is None:
                 last_wf_sel = wf_sel
 
+            # Reset mask when waveform source changes
             if wf_sel != last_wf_sel:
                 wf_prev_valid.set(0)
                 wf_interlock.set(0)
@@ -204,11 +170,10 @@ def main(prefix_rf_conditioning: str, prefix_LLRF: str):
                 cothread.Sleep(loop_period)
                 continue
 
+            # Extract region of interest based on time window parameters
             tol = wf_mask_percent.get() / 100.0
-
             t0 = wf_offset_curs_us.get()
             t1 = t0 + wf_duration_curs_us.get()
-
             start_idx = 0
             end_idx = len(time_vec) - 1
 
@@ -222,10 +187,9 @@ def main(prefix_rf_conditioning: str, prefix_LLRF: str):
                     end_idx = i - 1
                     break
 
-            sig_max = max(
-                abs(wf_curr[i]) for i in range(start_idx, end_idx + 1)
-            )
+            sig_max = max(abs(wf_curr[i]) for i in range(start_idx, end_idx + 1))
 
+            # Initial mask creation: store first valid pulse and define tolerance bands
             if wf_prev_valid.get() == 0:
                 if sig_max < wf_min_valid_amp:
                     wf_interlock.set(0)
@@ -240,8 +204,8 @@ def main(prefix_rf_conditioning: str, prefix_LLRF: str):
                 cothread.Sleep(loop_period)
                 continue
 
+            # Compare current waveform against established mask
             wf_prev = wf_pulse_prev.get()
-
             fault = False
             for i in range(start_idx, end_idx + 1):
                 low = wf_prev[i] * (1 - tol)
@@ -250,12 +214,13 @@ def main(prefix_rf_conditioning: str, prefix_LLRF: str):
                     fault = True
                     break
 
+            # Update mask with current pulse for trending
             wf_pulse_prev.set(list(wf_curr))
             wf_mask_low.set([v * (1 - tol) for v in wf_curr])
             wf_mask_high.set([v * (1 + tol) for v in wf_curr])
             wf_interlock.set(1 if fault else 0)
 
-            # >>> MODIFICA CHIAVE <<<
+            # Trigger interlock when waveform exceeds mask (only if vacuum is normal)
             if fault and not vacuum_over_tsh:
                 wf_pulse_postmortem.set(list(wf_curr))
                 wf_prev_valid.set(0)
@@ -264,23 +229,18 @@ def main(prefix_rf_conditioning: str, prefix_LLRF: str):
                     wf_intlk_time = time.time()
 
                 power_raise_status.set(0)
-                llrf_fbk_level = caget(
-                    prefix_LLRF + ":vm:dsp:sp_amp:power"
-                )
+                llrf_fbk_level = caget(prefix_LLRF + ":vm:dsp:sp_amp:power")
                 caput(prefix_LLRF + ":app:rf_ctrl", "0")
-
-                conditioning_setpoint.set(
-                    llrf_fbk_level * 1e-6 * intlk_hysteresis.get()
-                )
+                conditioning_setpoint.set(llrf_fbk_level * 1e-6 * intlk_hysteresis.get())
                 last_intlk_source.set("WF_PULSE_TO_PULSE")
                 last_intlk_datetime.set(str(time.time()))
                 vacuum_over_tsh = True
 
         cothread.Sleep(loop_period)
 
-# -----------------------------
-# Dump PVs
-# -----------------------------
+# ============================================================================
+# IOC Startup
+# ============================================================================
 softioc.dbl()
 with open(args.pvout, "w") as f:
     old_stdout = os.dup(1)
@@ -289,8 +249,5 @@ with open(args.pvout, "w") as f:
     os.dup2(old_stdout, 1)
     os.close(old_stdout)
 
-# -----------------------------
-# Start thread and IOC
-# -----------------------------
 cothread.Spawn(main, prefix_rf_conditioning, prefix_LLRF)
 softioc.interactive_ioc(globals())
