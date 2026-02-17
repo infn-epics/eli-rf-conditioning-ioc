@@ -143,9 +143,12 @@ def main(prefix_rf_conditioning: str, prefix_LLRF: str):
                 cothread.Sleep(loop_period)
                 continue
 
-            wf_sources = wf_source_suffix.get()
+            #wf_sources = wf_source_suffix.get()
+            wf_sources = [prefix_LLRF + s for s in wf_source_suffix.get()]
             wf_sel = int(wf_source_sel.get())
-            caput(wf_source_refresh_rate.get()[wf_sel], ".1 second")
+            wf_refresh_pvs = [prefix_LLRF + s for s in wf_source_refresh_rate.get()]
+            caput(wf_refresh_pvs[wf_sel], ".1 second")
+            #caput(wf_source_refresh_rate.get()[wf_sel], ".1 second")
 
             if wf_sel < 0 or wf_sel >= len(wf_sources):
                 cothread.Sleep(loop_period)
