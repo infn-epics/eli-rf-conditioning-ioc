@@ -15,7 +15,7 @@
     {
       "pvname": "CONDITIONING_TARGET",
       "type": "aOut",
-      "init_value": "1"
+      "init_value": "10"
     },
     {
       "pvname": "PREFIX_PUMPS",
@@ -35,7 +35,7 @@
     {
       "pvname": "VACUUM_TSH",
       "type": "WaveformOut",
-      "init_value": [1E-8,1E-8,1E-8,1E-8,1E-8,1E-8,1E-8,1E-8,1E-8,1E-8,1E-8,1E-8,1E-8]
+      "init_value": [8E-8,8E-8,8E-8,8E-8,8E-8,8E-8,8E-8,1E-7,1E-7,1E-7,1E-7,1E-7,1E-7]
     },
     {
       "pvname": "COUNTER_INTLK",
